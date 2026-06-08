@@ -1,0 +1,431 @@
+{
+  "name": "02 - WhatsApp Incoming Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp-incoming",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "aa000001-0001-0001-0001-000000000001",
+      "name": "WhatsApp Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "whatsapp-incoming-webhook-id"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"ok\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "aa000002-0002-0002-0002-000000000002",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 200]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "aa000003-0003-0003-0003-000000000003",
+              "name": "from_phone",
+              "value": "={{ $json.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.from ?? $json.body?.from ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "aa000004-0004-0004-0004-000000000004",
+              "name": "message_body",
+              "value": "={{ $json.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.text?.body ?? $json.body?.message ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "aa000005-0005-0005-0005-000000000005",
+              "name": "message_id",
+              "value": "={{ $json.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.id ?? $json.body?.wa_message_id ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "aa000006-0006-0006-0006-000000000006",
+              "name": "message_type",
+              "value": "={{ $json.body?.entry?.[0]?.changes?.[0]?.value?.messages?.[0]?.type ?? 'text' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa000007-0007-0007-0007-000000000007",
+      "name": "Extract Message Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 400]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "aa000008-0008-0008-0008-000000000008",
+              "leftValue": "={{ $json.from_phone }}",
+              "rightValue": "919727686181",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aa000009-0009-0009-0009-000000000009",
+      "name": "Is Owner Message?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/scrape/parse-reply",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"message\": \"{{ $json.message_body }}\",\n  \"phone\": \"{{ $json.from_phone }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "aa000010-0010-0010-0010-000000000010",
+      "name": "Parse Owner Reply",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "aa000011-0011-0011-0011-000000000011",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aa000012-0012-0012-0012-000000000012",
+      "name": "Parse Successful?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1120, 280]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "aa000013-0013-0013-0013-000000000013",
+              "name": "industry",
+              "value": "={{ $json.industry }}",
+              "type": "string"
+            },
+            {
+              "id": "aa000014-0014-0014-0014-000000000014",
+              "name": "location",
+              "value": "={{ $json.location }}",
+              "type": "string"
+            },
+            {
+              "id": "aa000015-0015-0015-0015-000000000015",
+              "name": "scrape_job_id",
+              "value": "={{ $json.scrape_job_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa000016-0016-0016-0016-000000000016",
+      "name": "Set Parsed Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1340, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/scrape/trigger",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"industry\": \"{{ $json.industry }}\",\n  \"location\": \"{{ $json.location }}\",\n  \"scrape_job_id\": \"{{ $json.scrape_job_id }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "aa000017-0017-0017-0017-000000000017",
+      "name": "Trigger Scrape Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/whatsapp/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"919727686181\",\n  \"message\": \"Got it! Scraping {{ $('Set Parsed Data').item.json.industry }} in {{ $('Set Parsed Data').item.json.location }}. I'll send you a summary when done.\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "aa000018-0018-0018-0018-000000000018",
+      "name": "Send Owner Confirmation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/whatsapp/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"919727686181\",\n  \"message\": \"Sorry, I couldn't understand that. Please try again with a format like: 'Salon in South Bopal' or 'Gym in Ahmedabad'.\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "aa000019-0019-0019-0019-000000000019",
+      "name": "Send Parse Error to Owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 380]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/conversations/inbound",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"phone\": \"{{ $json.from_phone }}\",\n  \"message\": \"{{ $json.message_body }}\",\n  \"wa_message_id\": \"{{ $json.message_id }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "aa000020-0020-0020-0020-000000000020",
+      "name": "Route Lead Message to App",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 520]
+    }
+  ],
+  "connections": {
+    "WhatsApp Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Message Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Message Fields": {
+      "main": [
+        [
+          {
+            "node": "Is Owner Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Owner Message?": {
+      "main": [
+        [
+          {
+            "node": "Parse Owner Reply",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Route Lead Message to App",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Owner Reply": {
+      "main": [
+        [
+          {
+            "node": "Parse Successful?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Successful?": {
+      "main": [
+        [
+          {
+            "node": "Set Parsed Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Parse Error to Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Parsed Data": {
+      "main": [
+        [
+          {
+            "node": "Trigger Scrape Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Trigger Scrape Job": {
+      "main": [
+        [
+          {
+            "node": "Send Owner Confirmation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "22222222-aaaa-bbbb-cccc-dddddddddddd",
+  "id": "workflow-02-whatsapp-webhook-localleadai"
+}

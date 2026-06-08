@@ -1,0 +1,85 @@
+##############################################################################
+# Local Lead AI — Development / Self-hosted Compose
+# Usage:
+#   docker compose -f docker/docker-compose.yml up -d
+#
+# Requires .env.local in the project root (copy from .env.example).
+##############################################################################
+
+version: '3.9'
+
+services:
+  # ---------------------------------------------------------------------------
+  # Next.js Application
+  # ---------------------------------------------------------------------------
+  app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: local-lead-ai-app
+    ports:
+      - "3000:3000"
+    env_file:
+      - ../.env.local
+    environment:
+      - NODE_ENV=production
+      - TZ=Asia/Kolkata
+    restart: unless-stopped
+    depends_on:
+      - n8n
+    networks:
+      - lead-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ---------------------------------------------------------------------------
+  # n8n Automation Engine
+  # ---------------------------------------------------------------------------
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: local-lead-ai-n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_BASIC_AUTH_ACTIVE=true
+      - N8N_BASIC_AUTH_USER=admin
+      - N8N_BASIC_AUTH_PASSWORD=changeme123   # Change before exposing to internet
+      - WEBHOOK_URL=http://localhost:5678     # Update to your public URL in production
+      - GENERIC_TIMEZONE=Asia/Kolkata
+      - TZ=Asia/Kolkata
+      # Disable diagnostics/telemetry
+      - N8N_DIAGNOSTICS_ENABLED=false
+      - N8N_PERSONALIZATION_ENABLED=false
+      # Allow the n8n instance to call the local Next.js app
+      - NODE_FUNCTION_ALLOW_EXTERNAL=*
+    volumes:
+      - n8n_data:/home/node/.n8n
+      # Mount workflow JSONs so you can import them via n8n CLI or UI
+      - ../n8n/workflows:/workflows:ro
+    restart: unless-stopped
+    networks:
+      - lead-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5678/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+# -----------------------------------------------------------------------------
+# Named Volumes
+# -----------------------------------------------------------------------------
+volumes:
+  n8n_data:
+    driver: local
+
+# -----------------------------------------------------------------------------
+# Networks
+# -----------------------------------------------------------------------------
+networks:
+  lead-network:
+    driver: bridge

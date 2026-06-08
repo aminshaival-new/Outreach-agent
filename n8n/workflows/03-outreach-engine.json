@@ -1,0 +1,425 @@
+{
+  "name": "03 - Outreach Engine",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "start-outreach",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "bb000001-0001-0001-0001-100000000001",
+      "name": "Start Outreach Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "start-outreach-webhook-id"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"accepted\" }",
+        "options": {
+          "responseCode": 202
+        }
+      },
+      "id": "bb000002-0002-0002-0002-200000000002",
+      "name": "Respond 202 Accepted",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 240]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bb000003-0003-0003-0003-300000000003",
+              "name": "scrape_job_id",
+              "value": "={{ $json.body.scrape_job_id }}",
+              "type": "string"
+            },
+            {
+              "id": "bb000004-0004-0004-0004-400000000004",
+              "name": "lead_ids",
+              "value": "={{ $json.body.lead_ids }}",
+              "type": "array"
+            },
+            {
+              "id": "bb000005-0005-0005-0005-500000000005",
+              "name": "total_leads",
+              "value": "={{ $json.body.lead_ids.length }}",
+              "type": "number"
+            },
+            {
+              "id": "bb000006-0006-0006-0006-600000000006",
+              "name": "industry",
+              "value": "={{ $json.body.industry ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "bb000007-0007-0007-0007-700000000007",
+              "name": "location",
+              "value": "={{ $json.body.location ?? '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bb000008-0008-0008-0008-800000000008",
+      "name": "Extract Webhook Body",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 420]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "lead_ids",
+        "options": {}
+      },
+      "id": "bb000009-0009-0009-0009-900000000009",
+      "name": "Split Lead IDs",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "batchSize": 1,
+        "options": {}
+      },
+      "id": "bb000010-0010-0010-0010-101000000010",
+      "name": "Process One Lead at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [900, 420]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/leads/{{ $json.lead_ids }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "bb000011-0011-0011-0011-111100000011",
+      "name": "Get Lead Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/outreach/generate",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $json.id }}\"\n}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "bb000012-0012-0012-0012-121200000012",
+      "name": "Generate Outreach Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 420]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bb000013-0013-0013-0013-131300000013",
+              "name": "lead_id",
+              "value": "={{ $('Get Lead Details').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "bb000014-0014-0014-0014-141400000014",
+              "name": "generated_message",
+              "value": "={{ $json.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bb000015-0015-0015-0015-151500000015",
+      "name": "Store Generated Message",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1560, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/outreach/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $json.lead_id }}\",\n  \"message\": \"{{ $json.generated_message }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "bb000016-0016-0016-0016-161600000016",
+      "name": "Send WhatsApp to Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/outreach/schedule-followups",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"lead_id\": \"{{ $('Store Generated Message').item.json.lead_id }}\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "bb000017-0017-0017-0017-171700000017",
+      "name": "Schedule Follow-Ups",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 420]
+    },
+    {
+      "parameters": {
+        "unit": "seconds",
+        "amount": 3
+      },
+      "id": "bb000018-0018-0018-0018-181800000018",
+      "name": "Wait 3 Seconds",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [2220, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/whatsapp/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"919727686181\",\n  \"message\": \"Outreach complete! Sent {{ $('Extract Webhook Body').item.json.total_leads }} messages for {{ $('Extract Webhook Body').item.json.industry }} in {{ $('Extract Webhook Body').item.json.location }} scrape.\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "bb000019-0019-0019-0019-191900000019",
+      "name": "Send Summary to Owner",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 420]
+    }
+  ],
+  "connections": {
+    "Start Outreach Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond 202 Accepted",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Webhook Body",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Webhook Body": {
+      "main": [
+        [
+          {
+            "node": "Split Lead IDs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Lead IDs": {
+      "main": [
+        [
+          {
+            "node": "Process One Lead at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process One Lead at a Time": {
+      "main": [
+        [
+          {
+            "node": "Get Lead Details",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Summary to Owner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Lead Details": {
+      "main": [
+        [
+          {
+            "node": "Generate Outreach Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Outreach Message": {
+      "main": [
+        [
+          {
+            "node": "Store Generated Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Generated Message": {
+      "main": [
+        [
+          {
+            "node": "Send WhatsApp to Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send WhatsApp to Lead": {
+      "main": [
+        [
+          {
+            "node": "Schedule Follow-Ups",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Follow-Ups": {
+      "main": [
+        [
+          {
+            "node": "Wait 3 Seconds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait 3 Seconds": {
+      "main": [
+        [
+          {
+            "node": "Process One Lead at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "33333333-aaaa-bbbb-cccc-dddddddddddd",
+  "id": "workflow-03-outreach-engine-localleadai"
+}

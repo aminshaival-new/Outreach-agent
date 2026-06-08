@@ -1,0 +1,265 @@
+{
+  "name": "05 - Apify Completion Webhook",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "apify-webhook",
+        "authentication": "none",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "dd000001-0001-0001-0001-100000000001",
+      "name": "Apify Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400],
+      "webhookId": "apify-webhook-completion-id"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={ \"status\": \"received\" }",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "dd000002-0002-0002-0002-200000000002",
+      "name": "Respond 200 OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [460, 220]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "dd000003-0003-0003-0003-300000000003",
+              "name": "apify_run_id",
+              "value": "={{ $json.body?.actorRunId ?? $json.body?.runId ?? $json.body?.id ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "dd000004-0004-0004-0004-400000000004",
+              "name": "run_status",
+              "value": "={{ $json.body?.status ?? $json.body?.eventData?.status ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "dd000005-0005-0005-0005-500000000005",
+              "name": "actor_id",
+              "value": "={{ $json.body?.actorId ?? '' }}",
+              "type": "string"
+            },
+            {
+              "id": "dd000006-0006-0006-0006-600000000006",
+              "name": "dataset_id",
+              "value": "={{ $json.body?.defaultDatasetId ?? '' }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dd000007-0007-0007-0007-700000000007",
+      "name": "Extract Run Info",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [460, 420]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "dd000008-0008-0008-0008-800000000008",
+              "leftValue": "={{ $json.run_status }}",
+              "rightValue": "SUCCEEDED",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dd000009-0009-0009-0009-900000000009",
+      "name": "Run Succeeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 420]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/scrape/apify-complete",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"apify_run_id\": \"{{ $json.apify_run_id }}\",\n  \"status\": \"SUCCEEDED\",\n  \"dataset_id\": \"{{ $json.dataset_id }}\",\n  \"actor_id\": \"{{ $json.actor_id }}\"\n}",
+        "options": {
+          "timeout": 60000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "dd000010-0010-0010-0010-101000000010",
+      "name": "Notify App - Success",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/scrape/apify-complete",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"apify_run_id\": \"{{ $json.apify_run_id }}\",\n  \"status\": \"FAILED\",\n  \"actor_id\": \"{{ $json.actor_id }}\"\n}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "dd000011-0011-0011-0011-111100000011",
+      "name": "Notify App - Failed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 520]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.NEXT_PUBLIC_APP_URL }}/api/whatsapp/send",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-webhook-secret",
+              "value": "={{ $env.N8N_WEBHOOK_SECRET }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"to\": \"919727686181\",\n  \"message\": \"Scraping run {{ $('Extract Run Info').item.json.apify_run_id }} failed. Please try again by sending a new scrape request.\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "dd000012-0012-0012-0012-121200000012",
+      "name": "Alert Owner of Failure",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 520]
+    }
+  ],
+  "connections": {
+    "Apify Webhook": {
+      "main": [
+        [
+          {
+            "node": "Respond 200 OK",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Extract Run Info",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Run Info": {
+      "main": [
+        [
+          {
+            "node": "Run Succeeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run Succeeded?": {
+      "main": [
+        [
+          {
+            "node": "Notify App - Success",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Notify App - Failed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Notify App - Failed": {
+      "main": [
+        [
+          {
+            "node": "Alert Owner of Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "55555555-aaaa-bbbb-cccc-dddddddddddd",
+  "id": "workflow-05-apify-webhook-localleadai"
+}
