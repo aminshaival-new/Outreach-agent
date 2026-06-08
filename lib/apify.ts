@@ -1,3 +1,5 @@
+import { ApifyClient } from 'apify-client'
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface ApifyGoogleMapsInput {
@@ -29,46 +31,12 @@ export interface ApifyGoogleMapsResult {
   emails: string[]
 }
 
-interface ApifyRunResponse {
-  data: {
-    id: string
-    actId: string
-    status: string
-    defaultDatasetId: string
-    defaultKeyValueStoreId: string
-  }
-}
+// ─── Client ───────────────────────────────────────────────────────────────────
 
-interface ApifyDatasetResponse {
-  data: {
-    items: ApifyGoogleMapsResult[]
-    total: number
-    count: number
-    offset: number
-    limit: number
-    desc: boolean
-  }
-}
-
-interface ApifyRunStatusResponse {
-  data: {
-    id: string
-    status: 'READY' | 'RUNNING' | 'SUCCEEDED' | 'FAILED' | 'TIMING-OUT' | 'TIMED-OUT' | 'ABORTING' | 'ABORTED'
-    defaultDatasetId: string
-    stats: {
-      durationMillis: number
-    }
-  }
-}
-
-// ─── Config ───────────────────────────────────────────────────────────────────
-
-const APIFY_BASE_URL = 'https://api.apify.com/v2'
-
-function getToken(): string {
+function getClient(): ApifyClient {
   const token = process.env.APIFY_API_TOKEN
   if (!token) throw new Error('Missing APIFY_API_TOKEN environment variable')
-  return token
+  return new ApifyClient({ token })
 }
 
 function getActorId(): string {
@@ -79,6 +47,7 @@ function getActorId(): string {
 
 /**
  * Start a Google Maps scrape actor run.
+ * Registers a webhook so Apify calls back when the run finishes.
  * @returns The Apify run ID
  */
 export async function startGoogleMapsScrape(
@@ -86,14 +55,11 @@ export async function startGoogleMapsScrape(
   location: string,
   webhookUrl: string
 ): Promise<string> {
-  const token = getToken()
+  const client = getClient()
   const actorId = getActorId()
-  const encodedActorId = encodeURIComponent(actorId)
-
-  const searchQuery = `${industry} ${location}`
 
   const input: ApifyGoogleMapsInput = {
-    searchStringsArray: [searchQuery],
+    searchStringsArray: [`${industry} ${location}`],
     maxCrawledPlacesPerSearch: 20,
     language: 'en',
     countryCode: 'in',
@@ -102,105 +68,86 @@ export async function startGoogleMapsScrape(
     website: true,
   }
 
-  // Build webhook URL with auth
-  const webhookPayload = {
-    eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED'],
-    requestUrl: webhookUrl,
-    payloadTemplate: JSON.stringify({
-      runId: '{{runId}}',
-      actorId: '{{actorId}}',
-      status: '{{status}}',
-      defaultDatasetId: '{{defaultDatasetId}}',
-    }),
-  }
-
-  const webhooksParam = encodeURIComponent(
-    Buffer.from(JSON.stringify([webhookPayload])).toString('base64')
-  )
-
-  const url = `${APIFY_BASE_URL}/acts/${encodedActorId}/runs?token=${token}&webhooks=${webhooksParam}`
-
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(input),
+  const run = await client.actor(actorId).start(input, {
+    webhooks: [
+      {
+        eventTypes: ['ACTOR.RUN.SUCCEEDED', 'ACTOR.RUN.FAILED'],
+        requestUrl: webhookUrl,
+        payloadTemplate: JSON.stringify({
+          runId: '{{runId}}',
+          actorId: '{{actorId}}',
+          status: '{{status}}',
+          defaultDatasetId: '{{defaultDatasetId}}',
+        }),
+      },
+    ],
   })
 
-  if (!response.ok) {
-    const errorBody = await response.text()
-    throw new Error(`Apify actor start failed (${response.status}): ${errorBody}`)
-  }
-
-  const data: ApifyRunResponse = await response.json()
-  return data.data.id
+  return run.id
 }
 
 /**
- * Fetch all results from a completed Apify run's default dataset.
+ * Fetch all dataset items from a completed Apify run.
  */
 export async function getApifyRunResults(runId: string): Promise<ApifyGoogleMapsResult[]> {
-  const token = getToken()
+  const client = getClient()
 
-  // First, get the run details to find the dataset ID
-  const runUrl = `${APIFY_BASE_URL}/actor-runs/${runId}?token=${token}`
-  const runResponse = await fetch(runUrl)
+  // Get run details to locate the dataset
+  const run = await client.run(runId).get()
 
-  if (!runResponse.ok) {
-    throw new Error(`Failed to fetch Apify run details (${runResponse.status})`)
+  if (!run) {
+    throw new Error(`Apify run ${runId} not found`)
   }
 
-  const runData: ApifyRunStatusResponse = await runResponse.json()
-  const datasetId = runData.data.defaultDatasetId
+  if (!run.defaultDatasetId) {
+    throw new Error(`Apify run ${runId} has no dataset`)
+  }
 
   // Paginate through all items
   const allItems: ApifyGoogleMapsResult[] = []
-  const pageSize = 100
   let offset = 0
-  let hasMore = true
+  const limit = 100
 
-  while (hasMore) {
-    const datasetUrl = `${APIFY_BASE_URL}/datasets/${datasetId}/items?token=${token}&offset=${offset}&limit=${pageSize}&format=json`
-    const datasetResponse = await fetch(datasetUrl)
+  while (true) {
+    const { items, total, count } = await client
+      .dataset(run.defaultDatasetId)
+      .listItems({ offset, limit })
 
-    if (!datasetResponse.ok) {
-      throw new Error(`Failed to fetch Apify dataset (${datasetResponse.status})`)
-    }
+    allItems.push(...(items as ApifyGoogleMapsResult[]))
+    offset += count
 
-    const datasetData: ApifyDatasetResponse = await datasetResponse.json()
-    const items = datasetData.data.items
-
-    allItems.push(...items)
-    offset += items.length
-
-    // Stop if we received fewer items than the page size
-    hasMore = items.length === pageSize && offset < datasetData.data.total
+    if (offset >= total || count < limit) break
   }
 
   return allItems
 }
 
 /**
- * Get the status of a running Apify run.
+ * Get the current status of an Apify run.
  */
-export async function getApifyRunStatus(runId: string): Promise<ApifyRunStatusResponse['data']> {
-  const token = getToken()
-  const url = `${APIFY_BASE_URL}/actor-runs/${runId}?token=${token}`
+export async function getApifyRunStatus(runId: string): Promise<{
+  id: string
+  status: string
+  defaultDatasetId: string
+}> {
+  const client = getClient()
+  const run = await client.run(runId).get()
 
-  const response = await fetch(url)
-
-  if (!response.ok) {
-    throw new Error(`Failed to fetch Apify run status (${response.status})`)
+  if (!run) {
+    throw new Error(`Apify run ${runId} not found`)
   }
 
-  const data: ApifyRunStatusResponse = await response.json()
-  return data.data
+  return {
+    id: run.id,
+    status: run.status,
+    defaultDatasetId: run.defaultDatasetId,
+  }
 }
 
+// ─── Normalization ────────────────────────────────────────────────────────────
+
 /**
- * Map raw Apify result to the normalized format expected by our database.
- * Returns null if the result lacks both a phone number and any contact info.
+ * Normalize a raw Apify result into the shape expected by our database.
  */
 export function normalizeApifyResult(result: ApifyGoogleMapsResult): {
   business_name: string
@@ -221,15 +168,15 @@ export function normalizeApifyResult(result: ApifyGoogleMapsResult): {
   linkedin_url: string | null
 } {
   return {
-    business_name: result.title || 'Unknown Business',
+    business_name: result.title?.trim() || 'Unknown Business',
     phone: result.phone?.trim() || null,
     email: result.emails?.[0]?.trim() || null,
     website: result.website?.trim() || null,
     address: result.address?.trim() || null,
     city: result.city?.trim() || null,
     state: result.state?.trim() || null,
-    country: result.countryCode === 'in' ? 'India' : result.countryCode || 'India',
-    google_rating: result.totalScore || null,
+    country: result.countryCode?.toLowerCase() === 'in' ? 'India' : result.countryCode || 'India',
+    google_rating: result.totalScore ? Number(result.totalScore) : null,
     review_count: result.reviewsCount || 0,
     google_maps_url: result.url?.trim() || null,
     place_id: result.placeId?.trim() || null,
@@ -241,28 +188,30 @@ export function normalizeApifyResult(result: ApifyGoogleMapsResult): {
 }
 
 /**
- * Calculate a lead score (0–100) based on available data points.
+ * Calculate a lead score (0–100) based on available contact and business data.
  */
-export function calculateLeadScore(result: ReturnType<typeof normalizeApifyResult>): number {
+export function calculateLeadScore(
+  result: ReturnType<typeof normalizeApifyResult>
+): number {
   let score = 0
 
   // Phone available: +30 (required for WhatsApp outreach)
   if (result.phone) score += 30
 
-  // No website: +25 (high value — they need one)
+  // No website: +25 (highest value — they need digital presence)
   if (!result.website) score += 25
 
-  // Has good Google rating: +15
+  // Good Google rating: +15 (established business worth targeting)
   if (result.google_rating && result.google_rating >= 4.0) score += 15
 
-  // Has reviews (established business): +10
+  // Has reviews (not a ghost listing): +10
   if (result.review_count > 10) score += 10
 
-  // Email available: +10
+  // Email available: +10 (secondary contact channel)
   if (result.email) score += 10
 
-  // Social media presence indicates digital awareness: +5 each, max 10
-  if (result.facebook_url || result.instagram_url) score += 5
+  // Social media presence (shows digital awareness): +5 per platform, max +10
+  if (result.facebook_url) score += 5
   if (result.instagram_url) score += 5
 
   return Math.min(score, 100)

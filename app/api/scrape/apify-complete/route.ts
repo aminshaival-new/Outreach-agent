@@ -96,12 +96,11 @@ export async function POST(request: NextRequest) {
       pipeline_stage: 'new' as const,
     }))
 
-    let insertedLeads: typeof leadsToInsert & { id: string }[] = []
+    const insertedLeadIds: string[] = []
 
     if (leadsToInsert.length > 0) {
       // Insert in batches of 50 to stay within Supabase limits
       const batchSize = 50
-      const allInserted: Array<{ id: string }> = []
 
       for (let i = 0; i < leadsToInsert.length; i += batchSize) {
         const batch = leadsToInsert.slice(i, i + batchSize)
@@ -115,13 +114,15 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        if (inserted) allInserted.push(...inserted)
+        if (inserted) {
+          for (const row of inserted) {
+            insertedLeadIds.push(row.id)
+          }
+        }
       }
-
-      insertedLeads = allInserted as typeof insertedLeads
     }
 
-    const actualLeadsCount = insertedLeads.length
+    const actualLeadsCount = insertedLeadIds.length
 
     // 5. Update scrape_job with lead count
     await supabase
@@ -172,9 +173,7 @@ export async function POST(request: NextRequest) {
 
     // 7. Trigger batch outreach for leads that have phone numbers
     const baseUrl = getBaseUrl(request)
-    const leadIdsWithPhone = insertedLeads
-      .slice(0, 20) // Limit initial batch to 20 leads to avoid rate limits
-      .map((l) => l.id)
+    const leadIdsWithPhone = insertedLeadIds.slice(0, 20) // Limit initial batch to 20 leads to avoid rate limits
 
     if (leadIdsWithPhone.length > 0) {
       fetch(`${baseUrl}/api/outreach/batch-send`, {

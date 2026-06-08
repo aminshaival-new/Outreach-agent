@@ -126,7 +126,6 @@ export async function generateLeadsExcel(
 
   // Add data rows
   leads.forEach((lead, index) => {
-    const rowIndex = index + 2 // 1-based, row 1 is header
     const isEven = index % 2 === 0
     const stageColor = STAGE_COLORS[lead.pipeline_stage] || 'FFFFFFFF'
     const stageFontColor = STAGE_FONT_COLORS[lead.pipeline_stage]
@@ -207,8 +206,6 @@ export async function generateLeadsExcel(
       }
     })
 
-    // Freeze row number to prevent accidental edits
-    _ = rowIndex // satisfy lint
   })
 
   // Auto-filter on all columns
@@ -283,6 +280,3 @@ export async function generateLeadsExcel(
     filename,
   }
 }
-
-// Prevent lint error for unused rowIndex variable
-declare const _: unknown

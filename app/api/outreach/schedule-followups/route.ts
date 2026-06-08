@@ -56,7 +56,12 @@ export async function POST(request: NextRequest) {
   // followup_2: 120 hours (48 + 72) from now
   const followUp2At = new Date(now.getTime() + 120 * 60 * 60 * 1000)
 
-  const followUpsToInsert = []
+  const followUpsToInsert: Array<{
+    lead_id: string
+    follow_up_type: 'followup_1' | 'followup_2'
+    scheduled_at: string
+    status: 'pending'
+  }> = []
 
   // Only insert if not already present
   const existingTypes = new Set(existingFollowUps?.map((f) => f.follow_up_type) || [])
